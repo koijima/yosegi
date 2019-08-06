@@ -18,7 +18,17 @@
 
 package jp.co.yahoo.yosegi.binary;
 
-import jp.co.yahoo.yosegi.binary.maker.*;
+import jp.co.yahoo.yosegi.binary.maker.DumpSpreadColumnBinaryMaker;
+import jp.co.yahoo.yosegi.binary.maker.DumpUnionColumnBinaryMaker;
+import jp.co.yahoo.yosegi.binary.maker.IColumnBinaryMaker;
+import jp.co.yahoo.yosegi.binary.maker.MaxLengthBasedArrayColumnBinaryMaker;
+import jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayDumpBooleanColumnBinaryMaker;
+import jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayDumpBytesColumnBinaryMaker;
+import jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayDumpDoubleColumnBinaryMaker;
+import jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayDumpFloatColumnBinaryMaker;
+import jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayDumpLongColumnBinaryMaker;
+import jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayDumpStringColumnBinaryMaker;
+import jp.co.yahoo.yosegi.binary.maker.UnsupportedColumnBinaryMaker;
 import jp.co.yahoo.yosegi.compressor.CompressionPolicy;
 import jp.co.yahoo.yosegi.compressor.FindCompressor;
 import jp.co.yahoo.yosegi.compressor.GzipCompressor;
@@ -58,7 +68,8 @@ public class ColumnBinaryMakerConfig {
     compressorClass = FindCompressor.get( GzipCompressor.class.getName() );
 
     unionMakerClass = FindColumnBinaryMaker.get( DumpUnionColumnBinaryMaker.class.getName() );
-    arrayMakerClass = FindColumnBinaryMaker.get( MaxLengthBasedArrayColumnBinaryMaker.class.getName() );
+    arrayMakerClass =
+        FindColumnBinaryMaker.get( MaxLengthBasedArrayColumnBinaryMaker.class.getName() );
     spreadMakerClass = FindColumnBinaryMaker.get( DumpSpreadColumnBinaryMaker.class.getName() );
 
     booleanMakerClass = FindColumnBinaryMaker.get(
