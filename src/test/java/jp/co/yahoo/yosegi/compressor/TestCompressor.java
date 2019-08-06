@@ -42,8 +42,8 @@ public class TestCompressor {
       DeflateCommonsCompressor.class.getName(),
       BZip2CommonsCompressor.class.getName(),
       DeflateCommonsCompressor.class.getName(),
-      //FramedSnappyCommonsCompressor.class.getName(),
-      //FramedLZ4CommonsCompressor.class.getName(),
+      SnappyCommonsCompressor.class.getName(),
+      FramedLZ4CommonsCompressor.class.getName(),
       ZstdCommonsCompressor.class.getName(),
     };
   }
@@ -67,7 +67,6 @@ public class TestCompressor {
       arguments( getCompressorClass() , "abcde".getBytes() , 0 , 1 , "a".getBytes() ),
       arguments( getCompressorClass() , "abcde".getBytes() , 4 , 1 , "e".getBytes() ),
       arguments( getCompressorClass() , "abcde".getBytes() , 1 , 3 , "bcd".getBytes() ),
-      arguments( getCompressorClass() , largeBytes , 0 , largeBytes.length , largeBytes ),
       arguments( getCompressorClass() , "abcde".getBytes() , 0 , 0 , new byte[0] )
     );
   }
