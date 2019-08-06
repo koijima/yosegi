@@ -30,8 +30,8 @@ import java.util.Map;
 
 public class YosegiRecordWriter implements AutoCloseable {
 
-  public static final int DEFAULT_SPREAD_SIZE = 1024 * 1024 * 112;
-  public static final int DEFAULT_MAX_RECORDS = 50000;
+  public static final int DEFAULT_SPREAD_SIZE = 1024 * 1024 * 64;
+  public static final int DEFAULT_MAX_RECORDS = 200000;
   public static final int DEFAULT_MIN_SIZE = 1024 * 1024 * 16;
   public static final int DEFAULT_MIN_RECORDS = 1000;
 

@@ -36,12 +36,12 @@ public class LongOptimizer implements IOptimizer {
    */
   public LongOptimizer( final Configuration config ) throws IOException {
     uniqMaker = FindColumnBinaryMaker.get(
-        "jp.co.yahoo.yosegi.binary.maker.UnsafeOptimizeLongColumnBinaryMaker" );
+        "jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayLongColumnBinaryMaker" );
     makerArray = new IColumnBinaryMaker[]{
       FindColumnBinaryMaker.get(
-          "jp.co.yahoo.yosegi.binary.maker.UnsafeOptimizeDumpLongColumnBinaryMaker" ),
+          "jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayDumpLongColumnBinaryMaker" ),
       FindColumnBinaryMaker.get(
-          "jp.co.yahoo.yosegi.binary.maker.UnsafeOptimizeLongColumnBinaryMaker" ),
+          "jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayLongColumnBinaryMaker" ),
     };
   }
 

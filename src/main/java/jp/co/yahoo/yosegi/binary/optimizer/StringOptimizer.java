@@ -37,9 +37,9 @@ public class StringOptimizer implements IOptimizer {
   public StringOptimizer( final Configuration config ) throws IOException {
     makerArray = new IColumnBinaryMaker[]{
       FindColumnBinaryMaker.get(
-          "jp.co.yahoo.yosegi.binary.maker.UnsafeOptimizeStringColumnBinaryMaker" ),
+          "jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayStringColumnBinaryMaker" ),
       FindColumnBinaryMaker.get(
-          "jp.co.yahoo.yosegi.binary.maker.UnsafeOptimizeDumpStringColumnBinaryMaker" ),
+          "jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayDumpStringColumnBinaryMaker" ),
     };
   }
 
