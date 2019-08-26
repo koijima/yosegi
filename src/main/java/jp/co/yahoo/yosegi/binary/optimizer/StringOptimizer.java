@@ -40,6 +40,8 @@ public class StringOptimizer implements IOptimizer {
           "jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayStringColumnBinaryMaker" ),
       FindColumnBinaryMaker.get(
           "jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayDumpStringColumnBinaryMaker" ),
+      FindColumnBinaryMaker.get(
+          "jp.co.yahoo.yosegi.binary.maker.RleStringColumnBinaryMaker" ),
     };
   }
 
@@ -52,17 +54,11 @@ public class StringOptimizer implements IOptimizer {
 
     StringColumnAnalizeResult stringResult = (StringColumnAnalizeResult)analizeResult;
 
-    int avgLength = stringResult.getTotalUtf8ByteSize() / stringResult.getRowCount();
-    if ( 4 < avgLength
-        && ( (double)stringResult.getUniqCount() / (double)stringResult.getRowCount() ) < 0.5d ) {
-      maker = makerArray[0];
-    } else {
-      for ( IColumnBinaryMaker currentMaker : makerArray ) {
-        int currentSize = currentMaker.calcBinarySize( analizeResult );
-        if ( currentSize <= minSize ) {
-          maker = currentMaker;
-          minSize = currentSize;
-        }
+    for ( IColumnBinaryMaker currentMaker : makerArray ) {
+      int currentSize = currentMaker.calcBinarySize( analizeResult );
+      if ( currentSize <= minSize ) {
+        maker = currentMaker;
+        minSize = currentSize;
       }
     }
     ColumnBinaryMakerConfig currentConfig = null;

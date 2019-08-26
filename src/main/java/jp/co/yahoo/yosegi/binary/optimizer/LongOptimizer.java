@@ -42,6 +42,8 @@ public class LongOptimizer implements IOptimizer {
           "jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayDumpLongColumnBinaryMaker" ),
       FindColumnBinaryMaker.get(
           "jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayLongColumnBinaryMaker" ),
+      FindColumnBinaryMaker.get(
+          "jp.co.yahoo.yosegi.binary.maker.RleLongColumnBinaryMaker" ),
     };
   }
 
@@ -49,16 +51,12 @@ public class LongOptimizer implements IOptimizer {
   public ColumnBinaryMakerConfig getColumnBinaryMakerConfig(
       final ColumnBinaryMakerConfig commonConfig , final IColumnAnalizeResult analizeResult ) {
     IColumnBinaryMaker maker = null;
-    if ( ( (double)analizeResult.getUniqCount() / (double)analizeResult.getRowCount() ) < 0.1d ) {
-      maker = uniqMaker;
-    } else {
-      int minSize = Integer.MAX_VALUE;
-      for ( IColumnBinaryMaker currentMaker : makerArray ) {
-        int currentSize = currentMaker.calcBinarySize( analizeResult );
-        if ( currentSize <= minSize ) {
-          maker = currentMaker;
-          minSize = currentSize;
-        }
+    int minSize = Integer.MAX_VALUE;
+    for ( IColumnBinaryMaker currentMaker : makerArray ) {
+      int currentSize = currentMaker.calcBinarySize( analizeResult );
+      if ( currentSize <= minSize ) {
+        maker = currentMaker;
+        minSize = currentSize;
       }
     }
     ColumnBinaryMakerConfig currentConfig = new ColumnBinaryMakerConfig( commonConfig );
