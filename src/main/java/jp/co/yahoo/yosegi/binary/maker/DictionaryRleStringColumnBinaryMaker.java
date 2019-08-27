@@ -53,14 +53,16 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
+public class DictionaryRleStringColumnBinaryMaker implements IColumnBinaryMaker {
 
   // Metadata layout
-  // byteOrder, ColumnStart, rowGroupCount , maxRowGroupCount ,
-  //   minLength , maxLength , nullLength, rowGroupBinaryLength, lengthByteLength
-  private static final int META_LENGTH = Byte.BYTES + Integer.BYTES * 8;
+  // byteOrder, ColumnStart, rowGroupCount , maxRowGroupCount , dicSize,
+  //   minLength,maxLength,nullLength,rowGroupIndexLength,rowGroupBinaryLength,lengthByteLength
+  private static final int META_LENGTH = Byte.BYTES + Integer.BYTES * 10;
 
   @Override
   public ColumnBinary toBinary(
@@ -95,9 +97,11 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
     int nullMaxIndex = 0;
     int notNullMaxIndex = 0;
 
+    Map<String,Integer> dicMap = new HashMap<String,Integer>();
     byte[][] objList = new byte[column.size()][];
     int totalLength = 0;
     int[] rowGroupLengthArray = new int[column.size()];
+    int[] rowGroupIndexArray = new int[column.size()];
     int rowGroupCount = 0;
     int maxRowGroupLength = 0;
     String currentValue = null;
@@ -125,15 +129,21 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
         currentRawValue = byteCell.getRow().getBytes();
       }
       if ( ! currentValue.equals( strObj ) ) {
-        objList[rowGroupCount] = currentRawValue;
+        if ( ! dicMap.containsKey( currentValue ) ) {
+          int index = dicMap.size();
+          dicMap.put( currentValue , index );
+          objList[index] = currentRawValue;
+          totalLength += currentRawValue.length;
+          lengthMinMax.set( currentRawValue.length );
+          detemineMinMax.set( currentValue );
+        }
+        int index = dicMap.get( currentValue );
+        rowGroupIndexArray[rowGroupCount] = index;
         rowGroupLengthArray[rowGroupCount] = currentRowGroupLength;
         rowGroupCount++;
         if ( maxRowGroupLength < currentRowGroupLength ) {
           maxRowGroupLength = currentRowGroupLength;
         }
-        lengthMinMax.set( currentRawValue.length );
-        detemineMinMax.set( currentValue );
-        totalLength += currentRawValue.length;
 
         currentValue = strObj;
         currentRawValue = byteCell.getRow().getBytes();
@@ -145,18 +155,28 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
       notNullMaxIndex = nullIndex;
       rowCount++;
     }
-    objList[rowGroupCount] = currentRawValue;
+    if ( ! dicMap.containsKey( currentValue ) ) {
+      int index = dicMap.size();
+      dicMap.put( currentValue , index );
+      objList[index] = currentRawValue;
+      totalLength += currentRawValue.length;
+      lengthMinMax.set( currentRawValue.length );
+      detemineMinMax.set( currentValue );
+    }
+    int index = dicMap.get( currentValue );
+    rowGroupIndexArray[rowGroupCount] = index;
     rowGroupLengthArray[rowGroupCount] = currentRowGroupLength;
     rowGroupCount++;
     if ( maxRowGroupLength < currentRowGroupLength ) {
       maxRowGroupLength = currentRowGroupLength;
     }
-    lengthMinMax.set( currentRawValue.length );
-    detemineMinMax.set( currentValue );
-    totalLength += currentRawValue.length;
 
     int nullLength = NullBinaryEncoder.getBinarySize(
         nullCount , rowCount , nullMaxIndex , notNullMaxIndex );
+
+    NumberToBinaryUtils.IIntConverter rowGroupIndexEncoder =
+        NumberToBinaryUtils.getIntConverter( 0 , dicMap.size() );
+    int rowGroupIndexLength = rowGroupIndexEncoder.calcBinarySize( rowGroupCount );
 
     NumberToBinaryUtils.IIntConverter rowGroupLengthEncoder =
         NumberToBinaryUtils.getIntConverter( 0 , maxRowGroupLength );
@@ -166,7 +186,7 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
     NumberToBinaryUtils.IIntConverter lengthConverter =
         NumberToBinaryUtils.getIntConverter( lengthMinMax.getMin() , lengthMinMax.getMax() );
     if ( ! lengthMinMax.getMin().equals( lengthMinMax.getMax() ) ) {
-      lengthByteLength = lengthConverter.calcBinarySize( rowGroupCount );
+      lengthByteLength = lengthConverter.calcBinarySize( dicMap.size() );
     }
 
     ByteOrder order = ByteOrder.nativeOrder();
@@ -175,6 +195,7 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
     int binaryLength = 
         META_LENGTH
         + nullLength
+        + rowGroupIndexLength
         + rowGroupBinaryLength
         + lengthByteLength
         + totalLength;
@@ -184,9 +205,11 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
     wrapBuffer.putInt( startIndex );
     wrapBuffer.putInt( rowGroupCount );
     wrapBuffer.putInt( maxRowGroupLength );
+    wrapBuffer.putInt( dicMap.size() );
     wrapBuffer.putInt( lengthMinMax.getMin() );
     wrapBuffer.putInt( lengthMinMax.getMax() );
     wrapBuffer.putInt( nullLength );
+    wrapBuffer.putInt( rowGroupIndexLength );
     wrapBuffer.putInt( rowGroupBinaryLength );
     wrapBuffer.putInt( lengthByteLength );
 
@@ -200,9 +223,17 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
         nullMaxIndex ,
         notNullMaxIndex );
 
-    IWriteSupporter rowGroupLengthWriter = rowGroupLengthEncoder.toWriteSuppoter(
+    IWriteSupporter rowGroupIndexWriter = rowGroupLengthEncoder.toWriteSuppoter(
         rowGroupCount ,
         binaryRaw , META_LENGTH + nullLength ,
+        rowGroupIndexLength  );
+    for ( int i = 0 ; i < rowGroupCount ; i++ ) {
+      rowGroupIndexWriter.putInt( rowGroupIndexArray[i] );
+    }
+
+    IWriteSupporter rowGroupLengthWriter = rowGroupLengthEncoder.toWriteSuppoter(
+        rowGroupCount ,
+        binaryRaw , META_LENGTH + nullLength + rowGroupIndexLength,
         rowGroupBinaryLength  );
     for ( int i = 0 ; i < rowGroupCount ; i++ ) {
       rowGroupLengthWriter.putInt( rowGroupLengthArray[i] );
@@ -210,20 +241,20 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
 
     if ( ! lengthMinMax.getMin().equals( lengthMinMax.getMax() ) ) {
       IWriteSupporter lengthWriter = lengthConverter.toWriteSuppoter(
-          rowGroupCount ,
+          dicMap.size() ,
           binaryRaw ,
-          META_LENGTH + nullLength + rowGroupBinaryLength ,
+          META_LENGTH + nullLength + rowGroupIndexLength + rowGroupBinaryLength ,
           lengthByteLength  );
-      for ( int i = 0 ; i < rowGroupCount; i++ ) {
+      for ( int i = 0 ; i < dicMap.size(); i++ ) {
         lengthWriter.putInt( objList[i].length );
       }
     }
 
     ByteBuffer valueBuffer = ByteBuffer.wrap(
         binaryRaw ,
-        META_LENGTH + nullLength + rowGroupBinaryLength + lengthByteLength ,
+        META_LENGTH + nullLength + rowGroupIndexLength + rowGroupBinaryLength + lengthByteLength ,
         totalLength );
-    for ( int i = 0 ; i < rowGroupCount ; i++ ) {
+    for ( int i = 0 ; i < dicMap.size() ; i++ ) {
       valueBuffer.put( objList[i] );
     }
     CompressResult compressResult = compressResultNode.getCompressResult(
@@ -276,9 +307,14 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
 
     int nullIndexLength =
         NullBinaryEncoder.getBinarySize( nullCount , notNullCount , maxIndex , maxIndex );
+
     int minLength = stringAnalizeResult.getMinUtf8Bytes();
     int maxLength = stringAnalizeResult.getMaxUtf8Bytes();
     int lengthBinaryLength = 0;
+
+    NumberToBinaryUtils.IIntConverter rowGroupIndexEncoder =
+        NumberToBinaryUtils.getIntConverter( 0 , analizeResult.getUniqCount() );
+    int rowGroupIndexLength = rowGroupIndexEncoder.calcBinarySize( nullIgnoreRleRowGroupCount );
 
     NumberToBinaryUtils.IIntConverter rowGroupLengthEncoder =
         NumberToBinaryUtils.getIntConverter( 0 , nullIgnoreRleMaxRowGroupLength );
@@ -287,13 +323,15 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
     NumberToBinaryUtils.IIntConverter lengthConverter =
         NumberToBinaryUtils.getIntConverter( minLength , maxLength );
     if ( ! ( minLength == maxLength ) ) {
-      lengthBinaryLength = lengthConverter.calcBinarySize( nullIgnoreRleRowGroupCount );
+      lengthBinaryLength = lengthConverter.calcBinarySize( analizeResult.getUniqCount() );
     }
+    int dicLength = stringAnalizeResult.getUniqUtf8ByteSize();
     return META_LENGTH
         + nullIndexLength
+        + rowGroupIndexLength
         + rowGroupBinaryLength
         + lengthBinaryLength 
-        + nullIgnoreRleTotalLength;
+        + dicLength;
   }
 
   @Override
@@ -352,9 +390,11 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
     int startIndex = wrapBuffer.getInt();
     final int rowGroupCount = wrapBuffer.getInt();
     int maxRowGroupCount = wrapBuffer.getInt();
+    int dicSize = wrapBuffer.getInt();
     int minLength = wrapBuffer.getInt();
     int maxLength = wrapBuffer.getInt();
     int nullLength = wrapBuffer.getInt();
+    int rowGroupIndexLength = wrapBuffer.getInt();
     int rowGroupBinaryLength = wrapBuffer.getInt();
     int lengthBinaryLength = wrapBuffer.getInt();
 
@@ -363,11 +403,18 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
 
     allocator.setValueCount( startIndex + isNullArray.length );
 
+    NumberToBinaryUtils.IIntConverter rowGroupIndexConverter =
+        NumberToBinaryUtils.getIntConverter( 0 , dicSize );
+    IReadSupporter rowGroupIndexReader = rowGroupIndexConverter.toReadSupporter(
+        binary,
+        META_LENGTH + nullLength ,
+        rowGroupIndexLength );
+
     NumberToBinaryUtils.IIntConverter rowGroupLengthConverter =
         NumberToBinaryUtils.getIntConverter( 0 , maxRowGroupCount );
     IReadSupporter rowGroupLengthReader = rowGroupLengthConverter.toReadSupporter(
         binary,
-        META_LENGTH + nullLength ,
+        META_LENGTH + nullLength + rowGroupIndexLength,
         rowGroupBinaryLength );
 
     IReadSupporter lengthReader;
@@ -378,27 +425,40 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
           NumberToBinaryUtils.getIntConverter( minLength , maxLength );
       lengthReader = lengthConverter.toReadSupporter(
           binary ,
-          META_LENGTH + nullLength + rowGroupBinaryLength ,
+          META_LENGTH + nullLength + rowGroupIndexLength + rowGroupBinaryLength ,
           lengthBinaryLength );
     }
+    Utf8BytesLinkObj[] dicArray = new Utf8BytesLinkObj[ dicSize ];
+    int currentStart = META_LENGTH 
+        + nullLength 
+        + rowGroupIndexLength
+        + rowGroupBinaryLength 
+        + lengthBinaryLength;
+    for ( int i = 0 ; i < dicArray.length ; i++ ) {
+      int currentLength = lengthReader.getInt();
+      dicArray[i] = new Utf8BytesLinkObj( binary , currentStart , currentLength );
+      currentStart += currentLength;
+    }
 
-    int currentStart = META_LENGTH + nullLength + rowGroupBinaryLength + lengthBinaryLength;
     for ( int i = 0 ; i < startIndex ; i++ ) {
       allocator.setNull( i );
     }
     int index = 0;
     for ( int i = 0 ; i < rowGroupCount ; i++ ) {
+      Utf8BytesLinkObj obj = dicArray[ rowGroupIndexReader.getInt() ];
       int rowGroupLength = rowGroupLengthReader.getInt();
-      int binaryLength = lengthReader.getInt();
       for ( int n = 0 ; n < rowGroupLength ; index++ ) {
         if ( isNullArray[index] ) {
           allocator.setNull( index + startIndex );
           continue;
         }
-        allocator.setBytes( index + startIndex , binary , currentStart , binaryLength );
+        allocator.setBytes(
+            index + startIndex ,
+            dicArray[index].getLinkBytes() ,
+            dicArray[index].getStart() ,
+            dicArray[index].getLength() );
         n++;
       }
-      currentStart += binaryLength;
     }
   }
 
@@ -456,22 +516,31 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
       ByteOrder order =
           wrapBuffer.get() == (byte)0 ? ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN;
       final int startIndex = wrapBuffer.getInt();
-      int rowGroupCount = wrapBuffer.getInt();
+      final int rowGroupCount = wrapBuffer.getInt();
       int maxRowGroupCount = wrapBuffer.getInt();
+      int dicSize = wrapBuffer.getInt();
       int minLength = wrapBuffer.getInt();
       int maxLength = wrapBuffer.getInt();
       int nullLength = wrapBuffer.getInt();
+      int rowGroupIndexLength = wrapBuffer.getInt();
       int rowGroupBinaryLength = wrapBuffer.getInt();
       int lengthBinaryLength = wrapBuffer.getInt();
 
       boolean[] isNullArray =
           NullBinaryEncoder.toIsNullArray( binary , META_LENGTH , nullLength );
 
+      NumberToBinaryUtils.IIntConverter rowGroupIndexConverter =
+          NumberToBinaryUtils.getIntConverter( 0 , dicSize );
+      IReadSupporter rowGroupIndexReader = rowGroupIndexConverter.toReadSupporter(
+          binary,
+          META_LENGTH + nullLength ,
+          rowGroupIndexLength );
+
       NumberToBinaryUtils.IIntConverter rowGroupLengthConverter =
           NumberToBinaryUtils.getIntConverter( 0 , maxRowGroupCount );
       IReadSupporter rowGroupLengthReader = rowGroupLengthConverter.toReadSupporter(
           binary,
-          META_LENGTH + nullLength ,
+          META_LENGTH + nullLength + rowGroupIndexLength,
           rowGroupBinaryLength );
 
       IReadSupporter lengthReader;
@@ -482,29 +551,37 @@ public class RleStringColumnBinaryMaker implements IColumnBinaryMaker {
             NumberToBinaryUtils.getIntConverter( minLength , maxLength );
         lengthReader = lengthConverter.toReadSupporter(
             binary ,
-            META_LENGTH + nullLength + rowGroupBinaryLength ,
+            META_LENGTH + nullLength + rowGroupIndexLength + rowGroupBinaryLength ,
             lengthBinaryLength );
       }
+      Utf8BytesLinkObj[] dicArray = new Utf8BytesLinkObj[ dicSize ];
+      int currentStart = META_LENGTH
+          + nullLength
+          + rowGroupIndexLength
+          + rowGroupBinaryLength
+          + lengthBinaryLength;
+      for ( int i = 0 ; i < dicArray.length ; i++ ) {
+        int currentLength = lengthReader.getInt();
+        dicArray[i] = new Utf8BytesLinkObj( binary , currentStart , currentLength );
+        currentStart += currentLength;
+      }
 
-      PrimitiveObject[] valueArray = new PrimitiveObject[ isNullArray.length ];
-      int currentStart = META_LENGTH + nullLength + rowGroupBinaryLength + lengthBinaryLength;
+      int[] indexArray = new int[isNullArray.length];
       int index = 0;
       for ( int i = 0 ; i < rowGroupCount ; i++ ) {
         int rowGroupLength = rowGroupLengthReader.getInt();
-        int binaryLength = lengthReader.getInt();
-        PrimitiveObject obj = new Utf8BytesLinkObj( binary , currentStart , binaryLength );
+        int valueIndex = rowGroupIndexReader.getInt();
         for ( int n = 0 ; n < rowGroupLength ; index++ ) {
           if ( ! isNullArray[index] ) {
-            valueArray[index] = obj;
+            indexArray[index] = valueIndex;
             n++;
           }
         }
-        currentStart += binaryLength;
       }
 
       column = new PrimitiveColumn( columnBinary.columnType , columnBinary.columnName );
-      column.setCellManager( new OptimizedNullArrayCellManager(
-          columnBinary.columnType , startIndex , valueArray ) );
+      column.setCellManager( new OptimizedNullArrayDicCellManager(
+          columnBinary.columnType , startIndex , isNullArray , indexArray , dicArray ) );
 
       isCreate = true;
     }
