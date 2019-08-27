@@ -454,9 +454,9 @@ public class DictionaryRleStringColumnBinaryMaker implements IColumnBinaryMaker 
         }
         allocator.setBytes(
             index + startIndex ,
-            dicArray[index].getLinkBytes() ,
-            dicArray[index].getStart() ,
-            dicArray[index].getLength() );
+            obj.getLinkBytes() ,
+            obj.getStart() ,
+            obj.getLength() );
         n++;
       }
     }
