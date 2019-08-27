@@ -42,6 +42,8 @@ public class StringOptimizer implements IOptimizer {
           "jp.co.yahoo.yosegi.binary.maker.OptimizedNullArrayDumpStringColumnBinaryMaker" ),
       FindColumnBinaryMaker.get(
           "jp.co.yahoo.yosegi.binary.maker.RleStringColumnBinaryMaker" ),
+      FindColumnBinaryMaker.get(
+          "jp.co.yahoo.yosegi.binary.maker.DictionaryRleStringColumnBinaryMaker" ),
     };
   }
 
